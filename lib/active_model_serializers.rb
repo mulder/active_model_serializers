@@ -23,6 +23,18 @@ if defined?(Rails)
           include app.routes.url_helpers
         end
       end
+
+      initializer "cleanup.active_model_serializer" do |app|
+        ActiveSupport.on_load(:action_controller)do
+          ActionDispatch::Reloader.to_prepare do
+            ActiveModel::SerializerSupport.cache.clear
+          end
+
+          ActionDispatch::Reloader.to_cleanup do
+            ActiveModel::SerializerSupport.cache.clear
+          end
+        end
+      end
     end
   end
 end
@@ -30,14 +42,20 @@ end
 module ActiveModel::SerializerSupport
   extend ActiveSupport::Concern
 
+  class << self
+    def cache
+      @cache ||= {}
+    end
+  end
+
   module ClassMethods #:nodoc:
     if "".respond_to?(:safe_constantize)
       def active_model_serializer
-        "#{self.name}Serializer".safe_constantize
+        ActiveModel::SerializerSupport.cache[self.name] ||= "#{self.name}Serializer".safe_constantize
       end
     else
       def active_model_serializer
-        begin
+        ActiveModel::SerializerSupport.cache[self.name] ||= begin
           "#{self.name}Serializer".constantize
         rescue NameError => e
           raise unless e.message =~ /uninitialized constant/
